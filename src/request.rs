@@ -50,6 +50,14 @@ where
         None
     }
 
+    /// Basic auth
+    ///
+    /// Username and password
+    #[inline]
+    fn basic_auth(&self) -> Option<(String, Option<String>)> {
+        None
+    }
+
     /// The body of the request
     ///
     /// Exists so you can skip sending a
@@ -95,6 +103,11 @@ where
         // Apply bearer token
         if let Some(bearer) = self.bearer() {
             request = request.bearer_auth(bearer);
+        }
+
+        // Apply basic auth
+        if let Some((username, password)) = self.basic_auth() {
+            request = request.basic_auth(username, password);
         }
 
         // Apply body
