@@ -44,6 +44,12 @@ where
         None
     }
 
+    /// Bearer token to include in the request
+    #[inline]
+    fn bearer(&self) -> Option<String> {
+        None
+    }
+
     /// The body of the request
     ///
     /// Exists so you can skip sending a
@@ -84,6 +90,11 @@ where
         // Apply form parameters
         if let Some(form) = self.form() {
             request = request.form(&form);
+        }
+
+        // Apply bearer token
+        if let Some(bearer) = self.bearer() {
+            request = request.bearer_auth(bearer);
         }
 
         // Apply body
