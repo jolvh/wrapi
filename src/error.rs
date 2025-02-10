@@ -10,7 +10,7 @@ pub enum Error {
     /// Generic HTTP client error
     ClientError,
     /// HTTP client failed to decode/deserialize response
-    ClientDecodeError,
+    ClientDecodeError(String),
 }
 
 impl fmt::Display for Error {
@@ -24,7 +24,7 @@ impl fmt::Display for Error {
                 )
             }
             Error::ClientError => write!(f, "HTTP client error"),
-            Error::ClientDecodeError => write!(f, "HTTP client failed to decode response"),
+            Error::ClientDecodeError(inner) => write!(f, "Decode error: {}", inner),
         }
     }
 }

@@ -7,16 +7,17 @@ use serde_json::Value;
 
 use super::error::Error;
 
-pub trait Request
+pub trait Request<T>
 where
     Self: Serialize + Send + Sync,
+    T: DeserializeOwned + Send + Sync,
 {
-    type Response: DeserializeOwned + Send + Sync;
+    // type Response:
 
     /// Endpoint to perform the request for
     ///
     /// E.g. `auth`
-    fn endpoint(&self) -> &str;
+    fn endpoint(&self) -> String;
 
     /// HTTP method to use
     ///
@@ -67,21 +68,12 @@ where
         Some(self)
     }
 
-    /// Sends the request to the API
+    /// Build the request, adding all existing
+    /// attributes and parameters to the request
     ///
-    /// Method from `self.method()` and URL
-    /// from `self.url()`
-    ///
-    /// Applies header, query and form parameters
-    /// if they exist
-    ///
-    /// Appends `self` as the JSON body if it
-    /// exists
-    fn send(
-        &self,
-        client: &Client,
-        base_url: &str,
-    ) -> impl Future<Output = Result<Self::Response, Error>> {
+    /// Exists so you can use the included builder
+    /// but also alter a request before executing it
+    fn build(&self, client: &Client, base_url: &str) -> RequestBuilder {
         let mut request =
             client.request(self.method(), format!("{}/{}", base_url, self.endpoint()));
 
@@ -115,28 +107,20 @@ where
             request = request.json(body);
         }
 
-        async move {
-            let response = request.send().await.map_err(|_| Error::ClientError)?;
-
-            Ok(self.from_response(response).await?)
-        }
+        request
     }
 
-    /// Appends `self` as the JSON body if it exists
-    /// and executes the request
-    ///
-    /// Exists so you can build your own request
-    /// but still utilize built-in parsing and
-    /// type-mapping
-    fn execute(
-        &self,
-        mut builder: RequestBuilder,
-    ) -> impl Future<Output = Result<Self::Response, Error>> {
-        // Apply body
-        if let Some(body) = self.body() {
-            builder = builder.json(body);
-        }
+    /// Builds and executes the request
+    fn send(&self, client: &Client, base_url: &str) -> impl Future<Output = Result<T, Error>> {
+        let request = self.build(client, base_url);
 
+        async move { self.exec(request).await }
+    }
+
+    /// For customizing the request builder
+    /// while still utilizing the built-in
+    /// parsing and type-mapping
+    fn exec(&self, builder: RequestBuilder) -> impl Future<Output = Result<T, Error>> {
         async move {
             let response = builder.send().await.map_err(|_| Error::ClientError)?;
 
@@ -150,10 +134,7 @@ where
     ///
     /// Deserializes into `Error::ResponseError`
     /// if the response was erroneous
-    fn from_response(
-        &self,
-        response: Response,
-    ) -> impl Future<Output = Result<Self::Response, Error>> {
+    fn from_response(&self, response: Response) -> impl Future<Output = Result<T, Error>> {
         async move {
             if !response.status().is_success() {
                 return Err(Error::ResponseError((
@@ -164,9 +145,9 @@ where
             }
 
             Ok(response
-                .json::<Self::Response>()
+                .json::<T>()
                 .await
-                .map_err(|_| Error::ClientDecodeError)?)
+                .map_err(|inner| Error::ClientDecodeError(inner.to_string()))?)
         }
     }
 }
