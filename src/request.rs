@@ -136,7 +136,7 @@ where
     /// if the response was erroneous
     fn from_response(&self, response: Response) -> impl Future<Output = Result<T, Error>> {
         async move {
-            if !response.status().is_success() {
+            if let Err(_) = response.error_for_status_ref() {
                 return Err(Error::ResponseError((
                     response.status(),
                     response.json::<Value>().await.ok(),
