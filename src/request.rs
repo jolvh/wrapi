@@ -12,20 +12,13 @@ where
     Self: Serialize + Send + Sync,
     T: DeserializeOwned + Send + Sync,
 {
-    // type Response:
-
     /// Endpoint to perform the request for
     ///
-    /// E.g. `auth`
+    /// E.g. `format!("/users/{}", user_id)`
     fn endpoint(&self) -> String;
 
     /// HTTP method to use
-    ///
-    /// Defaults to `GET`
-    #[inline]
-    fn method(&self) -> Method {
-        Method::GET
-    }
+    fn method(&self) -> Method;
 
     /// Header parameters to include in the request
     #[inline]
@@ -51,8 +44,6 @@ where
         None
     }
 
-    /// Basic auth
-    ///
     /// Username and password
     #[inline]
     fn basic_auth(&self) -> Option<(String, Option<String>)> {
@@ -61,8 +52,10 @@ where
 
     /// The body of the request
     ///
-    /// Exists so you can skip sending a
-    /// body
+    /// Returns `Some(self)` by default
+    ///
+    /// Exists so you can alter the body
+    /// or skip it entirely
     #[inline]
     fn body(&self) -> Option<&Self> {
         Some(self)
@@ -110,14 +103,17 @@ where
         request
     }
 
-    /// Builds and executes the request
+    /// Build and execute the request
     fn send(&self, client: &Client, base_url: &str) -> impl Future<Output = Result<T, Error>> {
         let request = self.build(client, base_url);
 
         async move { self.exec(request).await }
     }
 
-    /// For customizing the request builder
+    /// Execute the request and deserialize
+    /// the response into `T`
+    ///
+    /// Can be used to pass your custom builder
     /// while still utilizing the built-in
     /// parsing and type-mapping
     fn exec(&self, builder: RequestBuilder) -> impl Future<Output = Result<T, Error>> {
@@ -128,13 +124,44 @@ where
         }
     }
 
-    /// Deserializes `reqwest::Response` into
-    /// `Self::Response` if the response was
-    /// successful
+    /// Execute the request and deserialize
+    /// the response into `Option<T>`
     ///
-    /// Deserializes into `Error::ResponseError`
-    /// if the response was erroneous
+    /// Can be used to pass your custom builder
+    /// while still utilizing the built-in
+    /// parsing and type-mapping
+    fn exec_opt(&self, builder: RequestBuilder) -> impl Future<Output = Result<Option<T>, Error>> {
+        async move {
+            let response = builder.send().await.map_err(|_| Error::ClientError)?;
+
+            Ok(self.from_response_opt(response).await?)
+        }
+    }
+
+    /// Deserialize `reqwest::Response` into `T`
     fn from_response(&self, response: Response) -> impl Future<Output = Result<T, Error>> {
+        async move {
+            Ok(self
+                .check_response(response)
+                .await?
+                .json::<T>()
+                .await
+                .map_err(|inner| Error::ClientDecodeError(inner.to_string()))?)
+        }
+    }
+
+    /// Deserialize `reqwest::Response` into `Option<T>`
+    fn from_response_opt(
+        &self,
+        response: Response,
+    ) -> impl Future<Output = Result<Option<T>, Error>> {
+        async move { Ok(self.check_response(response).await?.json::<T>().await.ok()) }
+    }
+
+    /// Deserialize `reqwest::Response` into
+    /// `Error::ResponseError` if the response
+    /// was erroneous
+    fn check_response(&self, response: Response) -> impl Future<Output = Result<Response, Error>> {
         async move {
             if let Err(_) = response.error_for_status_ref() {
                 return Err(Error::ResponseError((
@@ -144,10 +171,7 @@ where
                 .into());
             }
 
-            Ok(response
-                .json::<T>()
-                .await
-                .map_err(|inner| Error::ClientDecodeError(inner.to_string()))?)
+            Ok(response)
         }
     }
 }

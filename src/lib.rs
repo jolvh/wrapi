@@ -18,19 +18,17 @@
 //! use wrapi::reqwest::Client;
 //!
 //! #[derive(Serialize, Deserialize)]
-//! struct CreateUserRequest {
+//! struct NewUser {
 //!     name: String,
 //! }
 //!
 //! #[derive(Serialize, Deserialize)]
-//! struct CreateUserReponse {
+//! struct Id {
 //!     id: u64,
 //! }
 //!
-//! impl Request for CreateUserRequest {
-//!     type Response = CreateUserReponse;
-//!
-//!     fn endpoint(&self) -> &str {
+//! impl Request<Id> for NewUser {
+//!     fn endpoint(&self) -> String {
 //!         "user"
 //!     }
 //!
@@ -45,7 +43,7 @@
 //!     let client = Client::new();
 //!
 //!     // Create request payload
-//!     let payload = CreateUserRequest {
+//!     let payload = NewUser {
 //!         name: "John Doe".to_string(),
 //!     };
 //!
